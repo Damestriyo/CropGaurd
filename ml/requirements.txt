@@ -1,0 +1,18 @@
+# Deep Learning
+torch
+torchvision
+
+# Data Processing
+numpy
+pandas
+
+# Machine Learning & Evaluation
+scikit-learn
+
+# Visualization
+matplotlib
+seaborn
+
+# Experimentation
+jupyter
+tqdm
