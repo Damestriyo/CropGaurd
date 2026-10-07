@@ -1,0 +1,85 @@
+================================================================================
+DAILY PROJECT PROGRESS REPORT - B.TECH 3RD YEAR CSE
+================================================================================
+
+Project Title : AI-Based Crop Disease Detection Web Application
+Team Size     : 5 Members
+Assigned Role : Backend Developer (FastAPI, REST APIs & Services)
+Date          : October 05, 2026
+Phase Status  : Phase 6 Completed (MongoDB Database Integration & History Storage)
+
+--------------------------------------------------------------------------------
+1. OBJECTIVES FOR TODAY
+--------------------------------------------------------------------------------
+- Establish the database layer using MongoDB and the asynchronous Motor driver.
+- Implement database schemas adhering to project specifications (users, predictions, diseases).
+- Ensure storage optimization: store image metadata/references rather than large binary blobs.
+- Implement prediction persistence and the scan history API (Phase 6 & Phase 8).
+- Ensure high availability and offline resilience: API must run gracefully with fallback
+  if MongoDB is temporarily offline.
+- Expand automated tests to verify database persistence and history endpoints.
+
+--------------------------------------------------------------------------------
+2. TECHNICAL WORK COMPLETED (BACKEND ONLY)
+--------------------------------------------------------------------------------
+A. Asynchronous Database Infrastructure (Phase 6)
+   - Integrated motor (v3.7.1) and pymongo (v4.18.2) into backend/requirements.txt.
+   - Built app/core/database.py:
+     * Managed MongoDB connection pool via FastAPI async lifespan context manager.
+     * Implemented automatic index creation on predictions (created_at DESC, user_id),
+       users (unique email), and diseases (slug, crop).
+     * Added resilient offline fallback: if MongoDB is unreachable, the system
+       automatically falls back to an in-memory buffer without throwing 500 errors.
+
+B. MongoDB Document Models (app/models/)
+   - app/models/prediction.py: PredictionDBModel with fields for user_id, filename,
+     crop, disease, confidence, severity, is_healthy, image_metadata, and created_at.
+   - app/models/user.py      : UserDBModel for authentication and account management (Phase 7 prep).
+   - app/models/disease.py   : DiseaseDBModel for agronomic catalog persistence.
+
+C. Scan History & Persistence (Phase 6 & 8)
+   - Created app/services/history_service.py:
+     * Handles recording prediction scans upon each POST /predict request.
+     * Supports paginated history retrieval and record deletion.
+   - Created app/schemas/history.py:
+     * Pydantic schemas for history list (PredictionHistoryItem) and detail views.
+   - Created app/routes/history.py:
+     * GET /history         : Paginated list of historical scans.
+     * GET /history/{id}    : Detailed scan view with image technical metadata.
+     * DELETE /history/{id} : Delete a scan record by ID.
+   - Updated app/routes/prediction.py:
+     * Every prediction is now assigned a unique record ID and saved automatically.
+
+D. Automated Testing & Verification
+   - Added tests/test_history.py testing scan creation, retrieval, and deletion.
+   - Updated existing prediction tests to assert database record IDs.
+   - Test Results: 17 passed out of 17 tests in 0.85s (100% pass rate).
+
+--------------------------------------------------------------------------------
+3. INTER-TEAM DEPENDENCIES & DELIVERABLES
+--------------------------------------------------------------------------------
+1. Frontend Teammate (React + Vite):
+   - Scan History Screen can now be built using GET /history and GET /history/{id}.
+   - The POST /predict response now includes the unique scan "id" for direct navigation.
+   - Swagger documentation updated at: http://localhost:8000/docs.
+
+2. Deep Learning Teammate (Model Research & Training):
+   - Inference results from the future model will automatically persist in MongoDB.
+   - Awaiting model delivery for Phase 3 (Preprocessing) and Phase 4 (Model Integration).
+
+--------------------------------------------------------------------------------
+4. GIT COMMIT RECORD
+--------------------------------------------------------------------------------
+- Commit Hash : 1dcb229
+- Commit Msg  : feat: implement phase 6 mongodb database integration and prediction history service
+- Tree Status : Working directory clean.
+
+--------------------------------------------------------------------------------
+5. NEXT PLANNED BACKEND TASKS
+--------------------------------------------------------------------------------
+- Await Deep Learning model for Phase 3 & 4 (Preprocessing & ML Model Integration).
+- In the meantime, prepare Phase 7 (JWT Authentication: register, login, protected routes).
+
+================================================================================
+End of Report
+================================================================================

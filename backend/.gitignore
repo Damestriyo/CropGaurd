@@ -1,0 +1,35 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Model files
+models/*.h5
+models/*.keras
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.tflite
+
+# Temporary upload storage
+uploads/
+temp/
