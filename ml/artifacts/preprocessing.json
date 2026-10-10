@@ -1,0 +1,24 @@
+{
+  "input_size": [
+    224,
+    224
+  ],
+  "color_mode": "RGB",
+  "resize": "Resize to 224x224",
+  "tensor_format": "CHW",
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "training_augmentation": null,
+  "architecture": "MobileNetV2",
+  "num_classes": 15
+}
