@@ -1,42 +1,47 @@
-# CropGuard — Plant Disease Classification
+# CropGaurd model artifacts and inference
 
-## Model
-- Architecture: MobileNetV2
-- Pretrained on: ImageNet
-- Input: RGB image resized to 224 x 224
-- Output: 15 plant disease and healthy classes
-- Framework: PyTorch / Torchvision
+The ML directory contains a MobileNetV2 inference implementation and the saved model artifacts used by the backend. The backend loads the model once when FastAPI starts and uses the output order in `artifacts/class_names.json` to map predictions.
 
-## Evaluation
+## Model and preprocessing
 
-Evaluated on the held-out PlantVillage test split:
-- Accuracy: 99.00%
-- Macro F1: 98.79%
-- Weighted F1: 99.00%
-- Test images: 3,094
+- Architecture: MobileNetV2 with the classifier output sized for 15 classes.
+- Framework: PyTorch and Torchvision.
+- Input: RGB image resized to 224 × 224.
+- Normalization: means `[0.485, 0.456, 0.406]`; standard deviations `[0.229, 0.224, 0.225]`.
+- Output: predicted class, softmax confidence, and top predictions.
 
-These results describe performance on the PlantVillage test set.
-Real-world farm images may produce different results.
+`src/predict.py` constructs MobileNetV2 using `weights=None`, then loads the saved checkpoint state dictionary. The inference code does not download ImageNet weights. The files in this project do not establish how the checkpoint was initialized during training, so ImageNet pretraining is not claimed here.
 
-## Files
+## Saved evaluation
 
-- `src/predict.py`: model loading and inference interface
-- `artifacts/mobilenetv2_best.pth`: best fine-tuned checkpoint
-- `artifacts/class_names.json`: output class order
-- `artifacts/preprocessing.json`: inference preprocessing configuration
-- `artifacts/metrics.json`: evaluation summary
-- `artifacts/test_classification_report.csv`: per-class test metrics
-- `artifacts/training_history.csv`: baseline training history
-- `artifacts/finetuning_history.csv`: fine-tuning history
+The saved `artifacts/metrics.json` reports these aggregate results for 3,094 test samples:
 
-## Inference
+| Metric | Result |
+|---|---:|
+| Accuracy | 99.00% |
+| Macro F1 | 98.79% |
+| Weighted F1 | 99.00% |
+| Test samples | 3,094 |
 
-The predictor returns:
-- `predicted_class`
-- `confidence`
-- `top_predictions`
+These metrics describe the saved test evaluation only. They do not guarantee equivalent performance on field photographs, different cameras, or images outside the supported classes. Softmax confidence is not calibrated diagnostic certainty. This classifier does not assess the severity of an individual plant and is not a leaf/non-leaf detector.
 
-Example:
+Project notes have described the test split as PlantVillage. The metrics file and available inference source do not record dataset provenance or how the split was produced, and no training pipeline is included here. Treat that dataset attribution as unverified project-reported information until training and evaluation records are available.
+
+## Artifacts
+
+- `src/predict.py` — model construction, checkpoint loading, transforms, and inference.
+- `artifacts/mobilenetv2_best.pth` — saved state dictionary checkpoint.
+- `artifacts/class_names.json` — exact 15-class output order.
+- `artifacts/preprocessing.json` — saved architecture and preprocessing metadata.
+- `artifacts/metrics.json` — aggregate evaluation metrics.
+- `artifacts/test_classification_report.csv` — per-class and aggregate test report.
+- `artifacts/training_history.csv` and `artifacts/finetuning_history.csv` — saved training-history records.
+
+The repository includes inference code and training-history artifacts, but no training pipeline under `ml/src`.
+
+## Inference example
+
+Run from the repository root with the project Python dependencies installed:
 
 ```python
 from ml.src.predict import PlantDiseasePredictor
@@ -46,9 +51,4 @@ result = predictor.predict("path/to/leaf_image.jpg")
 print(result)
 ```
 
-Install compatible versions of PyTorch, Torchvision, Pillow, and pandas
-as required by the project environment. The model inference code also
-requires the checkpoint and JSON configuration files listed above.
-
-Softmax confidence is not a guarantee of correctness. This model should
-not be treated as a definitive field diagnosis without real-world validation.
+The backend applies an API mapping from these model labels to canonical crop and disease names, then looks up disease information in its catalog. See [the backend README](../backend/README.md) for API setup and the list of supported labels.
