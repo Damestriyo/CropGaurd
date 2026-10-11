@@ -9,7 +9,10 @@ class DiseaseBase(BaseModel):
     disease: str = Field(..., description="Disease name or 'Healthy'")
     scientific_name: Optional[str] = Field(None, description="Botanical or pathogenic name")
     is_healthy: bool = Field(False, description="Flag indicating if leaf is healthy")
-    severity: str = Field("Low", description="Typical severity level (Low, Moderate, High, Critical)")
+    severity: str = Field(
+        "Low",
+        description="Typical disease-level severity category (Low, Moderate, High, Critical); not an estimate for an individual plant",
+    )
     symptoms: List[str] = Field(default_factory=list, description="List of visual diagnostic symptoms")
     causes: List[str] = Field(default_factory=list, description="Fungal, bacterial, viral, or environmental causes")
     prevention: List[str] = Field(default_factory=list, description="Preventative cultural and agricultural practices")

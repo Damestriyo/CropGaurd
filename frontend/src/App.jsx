@@ -1,6 +1,44 @@
 import { useEffect, useState } from "react";
 import "./index.css";
 import { analyzeLeaf, getHealth } from "./api";
+import { getLeafConfirmationError } from "./leafConfirmation";
+
+const ACCEPTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ACCEPTED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
+// Matches the backend's configured default; MAX_IMAGE_SIZE_MB can override it there.
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+
+function getFileError(file) {
+  if (!file) return "Please upload a leaf image first.";
+
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const mimeType = file.type.toLowerCase();
+  if (
+    !ACCEPTED_IMAGE_EXTENSIONS.has(extension) ||
+    (mimeType && !ACCEPTED_IMAGE_TYPES.has(mimeType))
+  ) {
+    return "Choose a JPEG, PNG, or WEBP image.";
+  }
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    return "The image must be 10 MB or smaller.";
+  }
+
+  return "";
+}
+
+function InfoList({ items, fallback }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <p className="info-fallback">{fallback}</p>;
+  }
+
+  return (
+    <ul className="info-list">
+      {items.map((item, index) => (
+        <li key={`${index}-${item}`}>{item}</li>
+      ))}
+    </ul>
+  );
+}
 
 function App() {
   const [image, setImage] = useState(null);
@@ -9,6 +47,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [apiStatus, setApiStatus] = useState("checking");
+  const [isDragging, setIsDragging] = useState(false);
+  const [leafConfirmed, setLeafConfirmed] = useState(false);
 
   useEffect(() => {
     getHealth()
@@ -16,20 +56,61 @@ function App() {
       .catch(() => setApiStatus("offline"));
   }, []);
 
-  const handleImage = (event) => {
-    const selectedFile = event.target.files[0];
+  const handleImage = (selectedFile) => {
+    const fileError = getFileError(selectedFile);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
 
-    if (selectedFile) {
-      setFile(selectedFile);
-      setImage(URL.createObjectURL(selectedFile));
-      setResult(null);
-      setError("");
+    setFile(selectedFile);
+    setImage(URL.createObjectURL(selectedFile));
+    setResult(null);
+    setLeafConfirmed(false);
+    setError("");
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    if (Array.from(event.dataTransfer.types).includes("Files")) {
+      event.dataTransfer.dropEffect = "copy";
     }
   };
 
+  const handleDragEnter = (event) => {
+    event.preventDefault();
+    if (Array.from(event.dataTransfer.types).includes("Files")) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (event) => {
+    event.preventDefault();
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const droppedFile = event.dataTransfer.files?.[0];
+    if (!droppedFile) {
+      setError("Drop a JPEG, PNG, or WEBP image to continue.");
+      return;
+    }
+    handleImage(droppedFile);
+  };
+
   const analyzeImage = async () => {
-    if (!file) {
-      alert("Please upload a leaf image first.");
+    const fileError = getFileError(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
+    const confirmationError = getLeafConfirmationError(leafConfirmed);
+    if (confirmationError) {
+      setError(confirmationError);
       return;
     }
 
@@ -151,7 +232,15 @@ function App() {
 
         <div className="upload-area">
 
-          <div className="upload-box">
+          <div
+            className={`upload-box${isDragging ? " upload-box-dragging" : ""}`}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            role="group"
+            aria-label="Image upload area"
+          >
 
             {image ? (
 
@@ -175,7 +264,7 @@ function App() {
                 <p>
                   Drag and drop your image here
                   <br />
-                  or select a file from your device
+                  or select a file from your device (JPEG, PNG, or WEBP; up to 10 MB)
                 </p>
               </>
 
@@ -187,13 +276,35 @@ function App() {
               {image ? "Choose Another Image" : "Choose Image"}
 
               <input
+                className="file-input"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                onChange={handleImage}
-                hidden
+                aria-label="Choose a leaf image"
+                onChange={(event) => {
+                  if (event.target.files?.[0]) {
+                    handleImage(event.target.files[0]);
+                  }
+                  event.target.value = "";
+                }}
               />
 
             </label>
+
+            <p className="image-scope-note" id="image-scope-note">
+              This classifier is trained for crop-leaf images and does not verify image content. Other photos can receive confident but incorrect disease labels.
+            </p>
+
+            {image && (
+              <label className="leaf-confirmation">
+                <input
+                  type="checkbox"
+                  checked={leafConfirmed}
+                  onChange={(event) => setLeafConfirmed(event.target.checked)}
+                  aria-describedby="image-scope-note"
+                />
+                <span>I confirm the image's main subject is a crop leaf.</span>
+              </label>
+            )}
 
 
             {image && (
@@ -214,6 +325,10 @@ function App() {
 
           </div>
 
+          <span className="sr-only" role="status">
+            {isDragging ? "Release to upload the image." : ""}
+          </span>
+
         </div>
 
 
@@ -224,19 +339,20 @@ function App() {
 
           <div className="result-card">
 
+            <div className="result-heading">
+              <div className="result-label">AI DIAGNOSIS RESULT</div>
+              <p>Review the prediction and care information for this leaf.</p>
+            </div>
+
             <div className="result-top">
 
               <div>
-                <div className="result-label">
-                  AI DIAGNOSIS RESULT
-                </div>
-
                 <h2>
                   {result.prediction.disease}
                 </h2>
               </div>
 
-              <div className="healthy-status">
+              <div className={`healthy-status${result.prediction.is_healthy ? " healthy" : ""}`}>
                 {result.prediction.is_healthy ? "✓ Healthy Leaf" : "⚠ Disease Detected"}
               </div>
 
@@ -260,11 +376,20 @@ function App() {
               </div>
 
               <div className="stat">
-                <span>Severity</span>
+                <span>Individual plant severity</span>
                 <strong>
-                  {result.prediction.severity}
+                  {result.prediction.severity?.toLowerCase() === "unknown"
+                    ? "Not assessed"
+                    : result.prediction.severity ?? "Not assessed"}
                 </strong>
               </div>
+
+              {result.disease_info?.severity && (
+                <div className="stat stat-typical-severity">
+                  <span>Typical disease severity</span>
+                  <strong>{result.disease_info.severity}</strong>
+                </div>
+              )}
 
             </div>
 
@@ -277,9 +402,38 @@ function App() {
                   🩺 Symptoms
                 </h3>
 
-                <p>{result.disease_info?.symptoms?.length
-                  ? result.disease_info.symptoms.join(" ")
-                  : "No additional symptom information is available for this diagnosis."}</p>
+                <InfoList
+                  items={result.disease_info?.symptoms}
+                  fallback="No additional symptom information is available for this diagnosis."
+                />
+
+              </div>
+
+
+              <div className="info-box">
+
+                <h3>
+                  🔎 Causes
+                </h3>
+
+                <InfoList
+                  items={result.disease_info?.causes}
+                  fallback="No cause information is available for this diagnosis."
+                />
+
+              </div>
+
+
+              <div className="info-box">
+
+                <h3>
+                  🛡️ Prevention
+                </h3>
+
+                <InfoList
+                  items={result.disease_info?.prevention}
+                  fallback="No prevention information is available for this diagnosis."
+                />
 
               </div>
 
@@ -290,9 +444,12 @@ function App() {
                   🛡️ Recommended Management
                 </h3>
 
-                <p>{result.disease_info?.management?.length
-                  ? result.disease_info.management.join(" ")
-                  : result.disease_info?.prevention?.join(" ") || "Follow local agricultural guidance for this crop."}</p>
+                <InfoList
+                  items={result.disease_info?.management?.length
+                    ? result.disease_info.management
+                    : result.disease_info?.prevention}
+                  fallback="Follow local agricultural guidance for this crop."
+                />
 
               </div>
 

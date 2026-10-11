@@ -17,9 +17,10 @@ FastAPI-based backend service for deep learning crop disease detection from leaf
   * Pillow verification to detect corrupted byte streams
   * Extraction of image metadata (dimensions, format, color mode, channels, byte size)
   * Clean HTTP error codes (`400 Bad Request`, `413 Payload Too Large`, `415 Unsupported Media Type`)
-* **Phase 5 & 9 Disease Knowledge Base & Contract Simulation**:
-  * Full prediction response contract returning crop diagnosis, confidence, severity, and health status.
-  * Clinical enrichment: symptoms, causes, prevention, and chemical/organic management guidelines.
+* **MobileNetV2 disease inference**:
+  * Loads the trained checkpoint once during FastAPI startup and reuses it for requests.
+  * Maps all 15 PlantVillage classes into the existing prediction response contract.
+  * Clinical enrichment uses the curated catalog where an entry exists; other classes return `disease_info: null`.
   * Dedicated disease catalog endpoints with optional crop filtering (`/diseases?crop=Tomato`).
 * **Phase 6 & 8 Scan History & Persistence**:
   * Prediction scans are automatically persisted into database.
@@ -99,8 +100,10 @@ source venv/bin/activate
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install -r ../requirements.txt
 ```
+
+The root `requirements.txt` includes PyTorch and torchvision for the existing MobileNetV2 implementation. Install a CPU or CUDA build of PyTorch that matches your machine using the [official PyTorch install selector](https://pytorch.org/get-started/locally/) when needed. The backend expects `ml/src/predict.py` and `ml/artifacts/mobilenetv2_best.pth`, `class_names.json`, and `preprocessing.json` in the repository's `ml/` directory. It uses the preprocessing and class order stored with the model. Missing or invalid artifacts prevent startup with a clear error.
 
 ### 3. Configure Environment Variables
 
@@ -123,7 +126,7 @@ DATABASE_NAME=crop_disease_db
 
 ### 4. Run the Development Server
 
-From the `backend/` directory:
+From the `backend/` directory (the model path is resolved from source files, so the working directory does not affect loading):
 
 ```bash
 uvicorn app.main:app --reload --port 8000
@@ -158,3 +161,32 @@ pytest tests/ -v
 | `DELETE` | `/history/{id}` | Remove a scan record from history | `200`, `404` |
 | `GET` | `/diseases` | List cataloged diseases (supports `?crop=CropName`) | `200` |
 | `GET` | `/diseases/{id}` | Get clinical details, causes, symptoms, and treatment | `200`, `404` |
+
+## Using the trained classifier
+
+Call `POST /predict` with a multipart form field named `file`:
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -F "file=@leaf.jpg;type=image/jpeg"
+```
+
+Example response (catalog details are omitted here when no matching entry exists):
+
+```json
+{
+  "success": true,
+  "message": "Crop disease detection completed successfully.",
+  "image_metadata": {
+    "filename": "leaf.jpg", "content_type": "image/jpeg", "size_bytes": 18432,
+    "size_kb": 18.0, "width": 300, "height": 200, "format": "JPEG", "mode": "RGB", "channels": 3
+  },
+  "prediction": {
+    "crop": "Tomato", "disease": "Early Blight", "confidence": 94.62,
+    "severity": "Unknown", "is_healthy": false
+  },
+  "disease_info": null
+}
+```
+
+Confidence is the model's softmax score converted to a percentage; it is not calibrated diagnostic certainty. Severity is reported as `Unknown` for diseased classes because the classifier does not estimate severity, and as `None` for healthy classes. PlantVillage test performance does not guarantee the same accuracy on real farm photographs.

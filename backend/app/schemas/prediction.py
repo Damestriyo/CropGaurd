@@ -21,7 +21,7 @@ class PredictionResult(BaseModel):
     crop: str = Field(..., description="Identified plant or crop species")
     disease: str = Field(..., description="Diagnosed condition or 'Healthy'")
     confidence: float = Field(..., description="Prediction confidence score percentage (0-100)")
-    severity: str = Field(..., description="Disease severity level (Low, Moderate, High, None)")
+    severity: str = Field(..., description="Disease severity (Unknown for diseased classes; None for healthy classes)")
     is_healthy: bool = Field(False, description="Whether the leaf is diagnosed healthy")
 
 
