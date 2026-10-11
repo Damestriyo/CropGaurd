@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.main import app
+from app.services.predictor import CLASS_MAPPING, PredictorService
 
 client = TestClient(app)
 
@@ -59,7 +60,7 @@ def test_valid_jpeg_prediction():
     assert pred["crop"] == "Tomato"
     assert pred["disease"] == "Early Blight"
     assert pred["confidence"] == 94.62
-    assert pred["severity"] == "Moderate"
+    assert pred["severity"] == "Unknown"
     assert pred["is_healthy"] is False
 
     # Verify enriched clinical info (Phase 9)
@@ -135,3 +136,118 @@ def test_empty_file_upload():
     response = client.post("/predict", files=files)
     assert response.status_code == 400
     assert "empty" in response.json()["detail"].lower()
+
+
+def test_all_model_labels_have_explicit_crop_and_disease_mapping():
+    expected = {
+        "Pepper__bell___Bacterial_spot": ("Pepper", "Bacterial Spot", False),
+        "Pepper__bell___healthy": ("Pepper", "Healthy", True),
+        "Potato___Early_blight": ("Potato", "Early Blight", False),
+        "Potato___Late_blight": ("Potato", "Late Blight", False),
+        "Potato___healthy": ("Potato", "Healthy", True),
+        "Tomato_Bacterial_spot": ("Tomato", "Bacterial Spot", False),
+        "Tomato_Early_blight": ("Tomato", "Early Blight", False),
+        "Tomato_Late_blight": ("Tomato", "Late Blight", False),
+        "Tomato_Leaf_Mold": ("Tomato", "Leaf Mold", False),
+        "Tomato_Septoria_leaf_spot": ("Tomato", "Septoria Leaf Spot", False),
+        "Tomato_Spider_mites_Two_spotted_spider_mite": ("Tomato", "Spider Mites", False),
+        "Tomato__Target_Spot": ("Tomato", "Target Spot", False),
+        "Tomato__Tomato_YellowLeaf__Curl_Virus": ("Tomato", "Yellow Leaf Curl Virus", False),
+        "Tomato__Tomato_mosaic_virus": ("Tomato", "Mosaic Virus", False),
+        "Tomato_healthy": ("Tomato", "Healthy", True),
+    }
+    assert CLASS_MAPPING == expected
+    assert len(CLASS_MAPPING) == 15
+
+
+def test_confidence_is_converted_to_percentage(mock_model):
+    result = PredictorService.predict(Image.new("RGB", (16, 16)))
+    assert result.confidence == 94.62
+    assert result.severity == "Unknown"
+    assert result.is_healthy is False
+    assert mock_model.calls == 1
+
+
+def test_healthy_class_uses_healthy_contract(mock_model):
+    mock_model.result["predicted_class"] = "Pepper__bell___healthy"
+    mock_model.result["confidence"] = 0.999
+    result = PredictorService.predict(Image.new("RGB", (16, 16)))
+    assert result.crop == "Pepper"
+    assert result.disease == "Healthy"
+    assert result.confidence == 99.9
+    assert result.severity == "None"
+    assert result.is_healthy is True
+
+
+def test_mock_model_integration_preserves_prediction_response(mock_model):
+    response = client.post(
+        "/predict",
+        files={"file": ("leaf.jpg", create_test_image(), "image/jpeg")},
+    )
+    assert response.status_code == 200
+    assert response.json()["prediction"] == {
+        "crop": "Tomato",
+        "disease": "Early Blight",
+        "confidence": 94.62,
+        "severity": "Unknown",
+        "is_healthy": False,
+    }
+    assert mock_model.calls == 1
+
+
+def test_tomato_bacterial_spot_prediction_resolves_catalog_entry(mock_model):
+    mock_model.result["predicted_class"] = "Tomato_Bacterial_spot"
+    prediction, disease_info = PredictorService.diagnose_and_enrich(
+        Image.new("RGB", (16, 16))
+    )
+
+    assert CLASS_MAPPING["Tomato_Bacterial_spot"] == (
+        "Tomato", "Bacterial Spot", False
+    )
+    assert prediction.crop == "Tomato"
+    assert prediction.disease == "Bacterial Spot"
+    assert disease_info is not None
+    assert disease_info.id == "tomato-bacterial-spot"
+
+
+def test_inference_failure_returns_service_unavailable(mock_model):
+    def fail(*args, **kwargs):
+        raise OSError("mock inference failure")
+
+    mock_model.predict = fail
+    response = client.post(
+        "/predict",
+        files={"file": ("leaf.jpg", create_test_image(), "image/jpeg")},
+    )
+    assert response.status_code == 503
+    assert "inference is temporarily unavailable" in response.json()["detail"]
+
+
+def test_model_is_loaded_once_at_startup_and_reused(monkeypatch, mock_model):
+    from fastapi.testclient import TestClient
+    from app.core.database import DatabaseManager
+
+    load_calls = []
+
+    def load_once(cls):
+        load_calls.append(True)
+        cls._model = mock_model
+
+    async def no_database_connect(cls):
+        return None
+
+    async def no_database_disconnect(cls):
+        return None
+
+    monkeypatch.setattr(PredictorService, "load_model", classmethod(load_once))
+    monkeypatch.setattr(DatabaseManager, "connect", classmethod(no_database_connect))
+    monkeypatch.setattr(DatabaseManager, "disconnect", classmethod(no_database_disconnect))
+    with TestClient(app) as startup_client:
+        for filename in ("one.jpg", "two.jpg"):
+            response = startup_client.post(
+                "/predict",
+                files={"file": (filename, create_test_image(), "image/jpeg")},
+            )
+            assert response.status_code == 200
+    assert len(load_calls) == 1
+    assert mock_model.calls == 2

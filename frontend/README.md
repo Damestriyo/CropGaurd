@@ -1,27 +1,44 @@
-# CropGuard frontend
+# CropGaurd frontend
 
-React and Vite frontend for the FastAPI crop disease detection backend.
+The frontend is a React application bundled and served in development by Vite. It calls the FastAPI backend through the API client in `src/api.js`.
 
-## Run the application locally
+## Run locally
 
-1. From the project root, start the backend:
+After installing the backend dependencies, launch Uvicorn from `backend/`:
 
-   ```powershell
-   .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --port 8000
-   ```
+```powershell
+Set-Location C:\CropGaurd\backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
 
-   If the project virtual environment is not installed, install the packages from the repository's `requirements.txt` first.
+In another terminal, install JavaScript dependencies and start Vite:
 
-2. In a second terminal, start the frontend:
+```powershell
+Set-Location C:\CropGaurd\frontend
+npm ci
+npm run dev
+```
 
-   ```powershell
-   Set-Location .\frontend
-   npm install
-   npm run dev
-   ```
+Open the local URL printed by Vite, usually `http://localhost:5173`. The development proxy forwards `/api/*` to `http://127.0.0.1:8000/*` and strips the `/api` prefix.
 
-3. Open the Vite URL shown in the terminal (usually `http://localhost:5173`). Vite forwards `/api/*` requests to `http://127.0.0.1:8000/*`.
+## API configuration
 
-The frontend checks `/health` and sends uploaded leaf images as multipart form data to `/predict`. To point it at a different API, create a `.env.local` file with `VITE_API_URL=https://your-api-host` (the value should not end in a slash). For local proxying to another backend port, set `VITE_BACKEND_URL` before starting Vite.
+By default, `src/api.js` uses `/api` as its API base. Set `VITE_API_URL` to a different API base URL (without a trailing slash) when the frontend should call an API directly. The Vite development proxy target can be changed by setting `VITE_BACKEND_URL` before running Vite. The API client calls `GET /health` for the status badge and sends `POST /predict` with a multipart `file` field for analysis.
 
-The backend currently runs in contract simulation mode until a trained model is configured, so its prediction is a development placeholder.
+## Upload and result behavior
+
+The upload accepts JPEG, PNG, and WEBP images. The browser checks extension, MIME type, and a 10 MB size limit before submission; this matches the backend default `MAX_IMAGE_SIZE_MB=10`. If that backend setting is changed, keep the frontend's client-side size check aligned. The backend also checks the upload and is authoritative.
+
+The UI includes a keyboard-accessible file picker, drag and drop, preview, loading and error messages, and a checkbox requiring the user to confirm that the image's main subject is a crop leaf. This checkbox is a user attestation, not image recognition. The disease classifier can still produce a confident but incorrect disease result for non-leaf images, and callers that use the API directly do not encounter the frontend confirmation.
+
+Prediction results display the model's individual plant severity separately from the catalog's typical disease severity. Unknown individual severity is shown as “Not assessed”; catalog guidance is shown when the backend returns `disease_info`.
+
+## Checks
+
+Run from `frontend/`:
+
+```powershell
+npm run test
+npm run lint
+npm run build
+```

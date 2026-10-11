@@ -7,6 +7,7 @@ from app.core.database import DatabaseManager
 from app.routes.prediction import router as prediction_router
 from app.routes.diseases import router as diseases_router
 from app.routes.history import router as history_router
+from app.services.predictor import PredictorService
 
 
 @asynccontextmanager
@@ -15,6 +16,8 @@ async def lifespan(app: FastAPI):
     Application lifespan manager.
     Connects to MongoDB upon startup and closes the connection pool upon shutdown.
     """
+    # Model loading is intentionally required: startup must not serve fake predictions.
+    PredictorService.load_model()
     await DatabaseManager.connect()
     yield
     await DatabaseManager.disconnect()
